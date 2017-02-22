@@ -14,6 +14,57 @@ namespace KontrollerSock {
 
 namespace {
 
+// General resource handle
+// Default constructable / movable RAII wrapper
+template<typename T, T InvalidValue, typename Deleter, Deleter DeleterInst>
+struct ResourceHandle {
+   ResourceHandle() : data(InvalidValue) {
+   }
+
+   ResourceHandle(T value) : data(value) {
+   }
+
+   ResourceHandle(ResourceHandle&& other) : data(other.data) {
+      other.data = InvalidValue;
+   }
+
+   ~ResourceHandle() {
+      if (data != InvalidValue) {
+         DeleterInst(data);
+      }
+   }
+
+   ResourceHandle& operator=(ResourceHandle&& other) {
+      if (data != InvalidValue) {
+         DeleterInst(data);
+      }
+
+      data = other.data;
+      other.data = InvalidValue;
+   }
+
+   operator bool() const {
+      return data != InvalidValue;
+   }
+
+   T data;
+};
+
+// Set up a few specific resource handles
+
+void winsockDeleter(bool started) {
+   WSACleanup();
+}
+using WinsockHandle = ResourceHandle<bool, false, decltype(winsockDeleter), winsockDeleter>;
+
+void socketDeleter(SOCKET socket) {
+   shutdown(socket, SD_BOTH);
+   closesocket(socket);
+}
+using SocketHandle = ResourceHandle<SOCKET, INVALID_SOCKET, decltype(socketDeleter), socketDeleter>;
+
+using AddrInfoHandle = ResourceHandle<struct addrinfo*, nullptr, decltype(freeaddrinfo), freeaddrinfo>;
+
 bool sendData(SOCKET socket, const char* data, size_t size) {
    size_t bytesWritten = 0;
 
@@ -139,46 +190,51 @@ bool sendInitialState(SOCKET socket, const Kontroller::State& state) {
    return sendEvents(socket, buttonEvents, dialEvents, sliderEvents);
 }
 
-struct WinsockHandle {
-   WinsockHandle() {
-      startupResult = WSAStartup(MAKEWORD(2, 2), &wsaData);
-   }
+SocketHandle createListenSocket() {
+   SocketHandle listenSocket;
 
-   ~WinsockHandle() {
-      if (startupResult == 0) {
-         WSACleanup();
+   {
+      AddrInfoHandle addrInfo;
+
+      struct addrinfo hints = {};
+      hints.ai_family = AF_INET;
+      hints.ai_socktype = SOCK_STREAM;
+      hints.ai_protocol = IPPROTO_TCP;
+      hints.ai_flags = AI_PASSIVE;
+      int addrInfoResult = getaddrinfo(NULL, kPort, &hints, &addrInfo.data);
+      if (addrInfoResult != 0) {
+         printf("getaddrinfo failed with error: %d\n", addrInfoResult);
+         return {};
+      }
+
+      listenSocket.data = socket(addrInfo.data->ai_family, addrInfo.data->ai_socktype, addrInfo.data->ai_protocol);
+      if (listenSocket.data == INVALID_SOCKET) {
+         printf("socket failed with error: %ld\n", WSAGetLastError());
+         return {};
+      }
+
+      int bindResult = bind(listenSocket.data, addrInfo.data->ai_addr, (int)addrInfo.data->ai_addrlen);
+      if (bindResult == SOCKET_ERROR) {
+         printf("bind failed with error: %d\n", WSAGetLastError());
+         return {};
       }
    }
 
-   WSADATA wsaData;
-   int startupResult;
-};
-
-struct SocketHandle {
-   SocketHandle(SOCKET sock) : socket(sock) {
+   int listenResult = listen(listenSocket.data, SOMAXCONN);
+   if (listenResult == SOCKET_ERROR) {
+      printf("listen failed with error: %d\n", WSAGetLastError());
+      return {};
    }
 
-   ~SocketHandle() {
-      if (socket != INVALID_SOCKET) {
-         closesocket(socket);
-      }
+   unsigned long nonBlocking = 1;
+   int ioctrlResult = ioctlsocket(listenSocket.data, FIONBIO, &nonBlocking);
+   if (ioctrlResult == SOCKET_ERROR) {
+      printf("ioctlsocket failed with error: %d\n", WSAGetLastError());
+      return {};
    }
 
-   SOCKET socket;
-};
-
-struct AddrInfoHandle {
-   AddrInfoHandle(struct addrinfo* addr) : info(addr) {
-   }
-
-   ~AddrInfoHandle() {
-      if (info) {
-         freeaddrinfo(info);
-      }
-   }
-
-   struct addrinfo* info;
-};
+   return listenSocket;
+}
 
 } // namespace
 
@@ -192,7 +248,83 @@ Server::~Server() {
 
 bool Server::run() {
    Kontroller kontroller;
+   initCallbacks(kontroller);
 
+   // Initialize Winsock
+   WSADATA wsaData;
+   int startupResult = WSAStartup(MAKEWORD(2, 2), &wsaData);
+   WinsockHandle winsockHandle(startupResult == 0);
+   if (!winsockHandle) {
+      printf("WSAStartup failed with error: %d\n", startupResult);
+      return false;
+   }
+
+   {
+      SocketHandle listenSocket = createListenSocket();
+      if (!listenSocket) {
+         return false;
+      }
+
+      while (!shuttingDown) {
+         // Wait until a client attempts to connect, or we are shutting down
+         SOCKET clientSocket = INVALID_SOCKET;
+         while (!shuttingDown && clientSocket == INVALID_SOCKET) {
+            clientSocket = accept(listenSocket.data, NULL, NULL);
+
+            if (clientSocket == INVALID_SOCKET) {
+               int error = WSAGetLastError();
+               if (error != WSAEWOULDBLOCK) {
+                  printf("accept failed with error: %d\n", WSAGetLastError());
+                  return false;
+               }
+
+               std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            }
+         }
+
+         // Spin off a new thread to manage the connection to the client
+         if (!shuttingDown) {
+            uint64_t newThreadId = 0;
+            {
+               std::lock_guard<std::mutex> lock(threadDataMutex);
+               newThreadId = threadCounter++;
+
+               assert(threadData.count(newThreadId) == 0);
+               threadData[newThreadId] = nullptr;
+            }
+
+            std::thread thread([this](uint64_t id, SOCKET socket) { manageConnection(id, socket); }, newThreadId, clientSocket);
+            thread.detach();
+         }
+      }
+   }
+
+   // Wait for the threads to terminate
+   assert(shuttingDown);
+   {
+      std::unique_lock<std::mutex> lock(threadDataMutex);
+
+      kontroller.setButtonCallback({});
+      kontroller.setDialCallback({});
+      kontroller.setSliderCallback({});
+
+      for (auto& pair : threadData) {
+         pair.second->cv.notify_all();
+      }
+
+      while (!threadData.empty()) {
+         threadDataCv.wait_for(lock, std::chrono::milliseconds(1), [this]() { return threadData.empty(); });
+      }
+   }
+
+   return true;
+}
+
+void Server::shutDown() {
+   shuttingDown = true;
+}
+
+void Server::initCallbacks(Kontroller& kontroller) {
    kontroller.setButtonCallback([this, &kontroller](Kontroller::Button button, bool pressed) {
       std::lock_guard<std::mutex> lock(threadDataMutex);
 
@@ -249,114 +381,10 @@ bool Server::run() {
          pair.second->cv.notify_all();
       }
    });
-
-   // Initialize Winsock, set up listen socket
-   WinsockHandle winsockHandle;
-   if (winsockHandle.startupResult != 0) {
-      printf("WSAStartup failed with error: %d\n", winsockHandle.startupResult);
-      return false;
-   }
-
-   {
-      SocketHandle listenSocket(INVALID_SOCKET);
-
-      {
-         AddrInfoHandle addrInfo(nullptr);
-
-         struct addrinfo hints = {};
-         hints.ai_family = AF_INET;
-         hints.ai_socktype = SOCK_STREAM;
-         hints.ai_protocol = IPPROTO_TCP;
-         hints.ai_flags = AI_PASSIVE;
-         int addrInfoResult = getaddrinfo(NULL, kPort, &hints, &addrInfo.info);
-         if (addrInfoResult != 0) {
-            printf("getaddrinfo failed with error: %d\n", addrInfoResult);
-            return false;
-         }
-
-         listenSocket.socket = socket(addrInfo.info->ai_family, addrInfo.info->ai_socktype, addrInfo.info->ai_protocol);
-         if (listenSocket.socket == INVALID_SOCKET) {
-            printf("socket failed with error: %ld\n", WSAGetLastError());
-            return false;
-         }
-
-         int bindResult = bind(listenSocket.socket, addrInfo.info->ai_addr, (int)addrInfo.info->ai_addrlen);
-         if (bindResult == SOCKET_ERROR) {
-            printf("bind failed with error: %d\n", WSAGetLastError());
-            return false;
-         }
-      }
-
-      int listenResult = listen(listenSocket.socket, SOMAXCONN);
-      if (listenResult == SOCKET_ERROR) {
-         printf("listen failed with error: %d\n", WSAGetLastError());
-         return false;
-      }
-
-      unsigned long nonBlocking = 1;
-      int ioctrlResult = ioctlsocket(listenSocket.socket, FIONBIO, &nonBlocking);
-      if (ioctrlResult == SOCKET_ERROR) {
-         printf("ioctlsocket failed with error: %d\n", WSAGetLastError());
-         return false;
-      }
-
-      while (!shuttingDown) {
-         // Wait until a client attempts to connect, or we are shutting down
-         SOCKET clientSocket = INVALID_SOCKET;
-         while (!shuttingDown && clientSocket == INVALID_SOCKET) {
-            clientSocket = accept(listenSocket.socket, NULL, NULL);
-
-            if (clientSocket == INVALID_SOCKET) {
-               int error = WSAGetLastError();
-               if (error != WSAEWOULDBLOCK) {
-                  printf("accept failed with error: %d\n", WSAGetLastError());
-                  return false;
-               }
-
-               std::this_thread::sleep_for(std::chrono::milliseconds(100));
-            }
-         }
-
-         // Spin off a new thread to manage the connection to the client
-         if (!shuttingDown) {
-            uint64_t newThreadId = 0;
-            {
-               std::lock_guard<std::mutex> lock(threadDataMutex);
-               newThreadId = threadCounter++;
-
-               assert(threadData.count(newThreadId) == 0);
-               threadData[newThreadId] = nullptr;
-            }
-
-            std::thread thread([this](uint64_t id, SOCKET socket) { manageConnection(id, socket); }, newThreadId, clientSocket);
-            thread.detach();
-         }
-      }
-   }
-
-   // Wait for the threads to terminate
-   assert(shuttingDown);
-   {
-      std::unique_lock<std::mutex> lock(threadDataMutex);
-
-      for (auto& pair : threadData) {
-         pair.second->cv.notify_all();
-      }
-
-      while (!threadData.empty()) {
-         threadDataCv.wait_for(lock, std::chrono::milliseconds(1), [this]() { return threadData.empty(); });
-      }
-   }
-
-   return true;
-}
-
-void Server::shutDown() {
-   shuttingDown = true;
 }
 
 void Server::manageConnection(uint64_t id, uint64_t uintSocket) {
-   SOCKET socket = static_cast<SOCKET>(uintSocket);
+   SocketHandle socket(static_cast<SOCKET>(uintSocket));
 
    std::shared_ptr<ThreadData> data = std::make_shared<ThreadData>();
    Kontroller::State localKontrollerState;
@@ -371,12 +399,12 @@ void Server::manageConnection(uint64_t id, uint64_t uintSocket) {
    }
 
    BOOL tcpNoDelay = TRUE;
-   int optResult = setsockopt(socket, IPPROTO_TCP, TCP_NODELAY, reinterpret_cast<char*>(&tcpNoDelay), sizeof(tcpNoDelay));
+   int optResult = setsockopt(socket.data, IPPROTO_TCP, TCP_NODELAY, reinterpret_cast<char*>(&tcpNoDelay), sizeof(tcpNoDelay));
    if (optResult == SOCKET_ERROR) {
       printf("Unable to disable the Nagle algorithm, connection may be jittery!\n");
    }
 
-   if (sendInitialState(socket, localKontrollerState)) {
+   if (sendInitialState(socket.data, localKontrollerState)) {
       std::vector<ButtonEvent> buttonEvents;
       std::vector<DialEvent> dialEvents;
       std::vector<SliderEvent> sliderEvents;
@@ -404,7 +432,7 @@ void Server::manageConnection(uint64_t id, uint64_t uintSocket) {
          }
 
          // Send events to client
-         bool success = sendEvents(socket, buttonEvents, dialEvents, sliderEvents);
+         bool success = sendEvents(socket.data, buttonEvents, dialEvents, sliderEvents);
          buttonEvents.clear();
          dialEvents.clear();
          sliderEvents.clear();
@@ -414,10 +442,6 @@ void Server::manageConnection(uint64_t id, uint64_t uintSocket) {
          }
       }
    }
-
-   // Close the connection
-   shutdown(socket, SD_BOTH);
-   closesocket(socket);
 
    // Unregister ourselves
    {

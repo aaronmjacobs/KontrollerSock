@@ -46,6 +46,8 @@ private:
       std::vector<SliderEvent> sliderEvents;
    };
 
+   void initCallbacks(Kontroller& kontroller);
+
    void manageConnection(uint64_t id, uint64_t socket);
 
    std::atomic_bool shuttingDown;
