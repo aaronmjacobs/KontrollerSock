@@ -309,7 +309,9 @@ bool Server::run() {
       kontroller.setSliderCallback({});
 
       for (auto& pair : threadData) {
-         pair.second->cv.notify_all();
+         if (pair.second) {
+            pair.second->cv.notify_all();
+         }
       }
 
       while (!threadData.empty()) {
@@ -335,6 +337,10 @@ void Server::initCallbacks(Kontroller& kontroller) {
       event.pressed = pressed;
 
       for (auto& pair : threadData) {
+         if (!pair.second) {
+            continue;
+         }
+
          {
             std::lock_guard<std::mutex> eventLock(pair.second->eventMutex);
             pair.second->buttonEvents.push_back(event);
@@ -354,6 +360,10 @@ void Server::initCallbacks(Kontroller& kontroller) {
       event.value = value;
 
       for (auto& pair : threadData) {
+         if (!pair.second) {
+            continue;
+         }
+
          {
             std::lock_guard<std::mutex> eventLock(pair.second->eventMutex);
             pair.second->dialEvents.push_back(event);
@@ -373,6 +383,10 @@ void Server::initCallbacks(Kontroller& kontroller) {
       event.value = value;
 
       for (auto& pair : threadData) {
+         if (!pair.second) {
+            continue;
+         }
+
          {
             std::lock_guard<std::mutex> eventLock(pair.second->eventMutex);
             pair.second->sliderEvents.push_back(event);
@@ -392,6 +406,10 @@ void Server::manageConnection(uint64_t id, uint64_t uintSocket) {
    // Register ourselves
    {
       std::lock_guard<std::mutex> lock(threadDataMutex);
+
+      if (shuttingDown) {
+         return;
+      }
 
       assert(threadData.count(id) == 1 && threadData[id] == nullptr); // Space should be reserved for us, but no data allocated yet
       threadData[id] = data;
