@@ -16,12 +16,16 @@ set(SERVER_SOURCES)
 list(APPEND SERVER_SOURCES
    "${INC_DIR}/KontrollerSock/Packet.h"
    "${INC_DIR}/KontrollerSock/Server.h"
+   "${SRC_DIR}/Handles.h"
+   "${SRC_DIR}/Sock.h"
    "${SERVER_SRC_DIR}/Server.cpp"
 )
 set(CLIENT_SOURCES)
 list(APPEND CLIENT_SOURCES
    "${INC_DIR}/KontrollerSock/Packet.h"
    "${INC_DIR}/KontrollerSock/Client.h"
+   "${SRC_DIR}/Handles.h"
+   "${SRC_DIR}/Sock.h"
    "${CLIENT_SRC_DIR}/Client.cpp"
 )
 
@@ -29,10 +33,12 @@ list(APPEND CLIENT_SOURCES
 add_library(${SERVER_TARGET} ${SERVER_SOURCES})
 target_include_directories(${SERVER_TARGET}
    PUBLIC "${INC_DIR}"
+   PRIVATE "${SRC_DIR}"
 )
 add_library(${CLIENT_TARGET} ${CLIENT_SOURCES})
 target_include_directories(${CLIENT_TARGET}
    PUBLIC "${INC_DIR}"
+   PRIVATE "${SRC_DIR}"
 )
 set_target_properties(${SERVER_TARGET} PROPERTIES
    CXX_STANDARD 14

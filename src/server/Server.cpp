@@ -1,76 +1,21 @@
 #include "KontrollerSock/Packet.h"
 #include "KontrollerSock/Server.h"
-
-#define WIN32_LEAN_AND_MEAN
-#include <windows.h>
-#include <winsock2.h>
-#include <ws2tcpip.h>
-// Need to link with Ws2_32.lib
-#pragma comment (lib, "Ws2_32.lib")
+#include "Handles.h"
+#include "Sock.h"
 
 #include <chrono>
+#include <cstdint>
 
 namespace KontrollerSock {
 
 namespace {
 
-// General resource handle
-// Default constructable / movable RAII wrapper
-template<typename T, T InvalidValue, typename Deleter, Deleter DeleterInst>
-struct ResourceHandle {
-   ResourceHandle() : data(InvalidValue) {
-   }
-
-   ResourceHandle(T value) : data(value) {
-   }
-
-   ResourceHandle(ResourceHandle&& other) : data(other.data) {
-      other.data = InvalidValue;
-   }
-
-   ~ResourceHandle() {
-      if (data != InvalidValue) {
-         DeleterInst(data);
-      }
-   }
-
-   ResourceHandle& operator=(ResourceHandle&& other) {
-      if (data != InvalidValue) {
-         DeleterInst(data);
-      }
-
-      data = other.data;
-      other.data = InvalidValue;
-   }
-
-   operator bool() const {
-      return data != InvalidValue;
-   }
-
-   T data;
-};
-
-// Set up a few specific resource handles
-
-void winsockDeleter(bool started) {
-   WSACleanup();
-}
-using WinsockHandle = ResourceHandle<bool, false, decltype(winsockDeleter), winsockDeleter>;
-
-void socketDeleter(SOCKET socket) {
-   shutdown(socket, SD_BOTH);
-   closesocket(socket);
-}
-using SocketHandle = ResourceHandle<SOCKET, INVALID_SOCKET, decltype(socketDeleter), socketDeleter>;
-
-using AddrInfoHandle = ResourceHandle<struct addrinfo*, nullptr, decltype(freeaddrinfo), freeaddrinfo>;
-
-bool sendData(SOCKET socket, const char* data, size_t size) {
+bool sendData(Sock::Socket socket, const uint8_t* data, size_t size) {
    size_t bytesWritten = 0;
 
    while (bytesWritten < size) {
-      int result = send(socket, data + bytesWritten, static_cast<int>(size - bytesWritten), 0);
-      if (result == SOCKET_ERROR) {
+      ssize_t result = Sock::send(socket, data + bytesWritten, size - bytesWritten, 0);
+      if (result == Sock::kSocketError) {
          // Connection lost
          return false;
       }
@@ -82,16 +27,16 @@ bool sendData(SOCKET socket, const char* data, size_t size) {
    return true;
 }
 
-bool sendPacket(SOCKET socket, EventPacket packet) {
+bool sendPacket(Sock::Socket socket, EventPacket packet) {
    EventPacket networkPacket;
-   networkPacket.type = htons(packet.type);
-   networkPacket.id = htons(packet.id);
-   networkPacket.value = htonl(packet.value);
+   networkPacket.type = Sock::Endian::htons(packet.type);
+   networkPacket.id = Sock::Endian::htons(packet.id);
+   networkPacket.value = Sock::Endian::htonl(packet.value);
 
-   return sendData(socket, reinterpret_cast<const char*>(&networkPacket), sizeof(networkPacket));
+   return sendData(socket, reinterpret_cast<const uint8_t*>(&networkPacket), sizeof(networkPacket));
 }
 
-bool sendEvents(SOCKET socket, const std::vector<ButtonEvent>& buttonEvents, const std::vector<DialEvent>& dialEvents, const std::vector<SliderEvent>& sliderEvents) {
+bool sendEvents(Sock::Socket socket, const std::vector<ButtonEvent>& buttonEvents, const std::vector<DialEvent>& dialEvents, const std::vector<SliderEvent>& sliderEvents) {
    bool success = true;
 
    for (ButtonEvent buttonEvent : buttonEvents) {
@@ -126,7 +71,7 @@ bool sendEvents(SOCKET socket, const std::vector<ButtonEvent>& buttonEvents, con
    return success;
 }
 
-bool sendInitialState(SOCKET socket, const Kontroller::State& state) {
+bool sendInitialState(Sock::Socket socket, const Kontroller::State& state) {
    std::vector<ButtonEvent> buttonEvents;
    buttonEvents.reserve(35);
    buttonEvents.push_back({ Kontroller::Button::kTrackPrevious, state.trackPrevious });
@@ -196,40 +141,40 @@ SocketHandle createListenSocket() {
    {
       AddrInfoHandle addrInfo;
 
-      struct addrinfo hints = {};
+      addrinfo hints = {};
       hints.ai_family = AF_INET;
       hints.ai_socktype = SOCK_STREAM;
       hints.ai_protocol = IPPROTO_TCP;
       hints.ai_flags = AI_PASSIVE;
-      int addrInfoResult = getaddrinfo(NULL, kPort, &hints, &addrInfo.data);
+      int addrInfoResult = Sock::getaddrinfo(nullptr, kPort, &hints, &addrInfo.data);
       if (addrInfoResult != 0) {
          printf("getaddrinfo failed with error: %d\n", addrInfoResult);
          return {};
       }
 
-      listenSocket.data = socket(addrInfo.data->ai_family, addrInfo.data->ai_socktype, addrInfo.data->ai_protocol);
-      if (listenSocket.data == INVALID_SOCKET) {
-         printf("socket failed with error: %ld\n", WSAGetLastError());
+      listenSocket.data = Sock::socket(addrInfo.data->ai_family, addrInfo.data->ai_socktype, addrInfo.data->ai_protocol);
+      if (listenSocket.data == Sock::kInvalidSocket) {
+         printf("socket failed with error: %d\n", Sock::System::getLastError());
          return {};
       }
 
-      int bindResult = bind(listenSocket.data, addrInfo.data->ai_addr, (int)addrInfo.data->ai_addrlen);
-      if (bindResult == SOCKET_ERROR) {
-         printf("bind failed with error: %d\n", WSAGetLastError());
+      int bindResult = Sock::bind(listenSocket.data, addrInfo.data->ai_addr, static_cast<socklen_t>(addrInfo.data->ai_addrlen));
+      if (bindResult == Sock::kSocketError) {
+         printf("bind failed with error: %d\n", Sock::System::getLastError());
          return {};
       }
    }
 
-   int listenResult = listen(listenSocket.data, SOMAXCONN);
-   if (listenResult == SOCKET_ERROR) {
-      printf("listen failed with error: %d\n", WSAGetLastError());
+   int listenResult = Sock::listen(listenSocket.data, SOMAXCONN);
+   if (listenResult == Sock::kSocketError) {
+      printf("listen failed with error: %d\n", Sock::System::getLastError());
       return {};
    }
 
    unsigned long nonBlocking = 1;
-   int ioctrlResult = ioctlsocket(listenSocket.data, FIONBIO, &nonBlocking);
-   if (ioctrlResult == SOCKET_ERROR) {
-      printf("ioctlsocket failed with error: %d\n", WSAGetLastError());
+   int ioctlResult = Sock::ioctl(listenSocket.data, FIONBIO, &nonBlocking);
+   if (ioctlResult == Sock::kSocketError) {
+      printf("ioctlsocket failed with error: %d\n", Sock::System::getLastError());
       return {};
    }
 
@@ -250,12 +195,11 @@ bool Server::run() {
    Kontroller kontroller;
    initCallbacks(kontroller);
 
-   // Initialize Winsock
-   WSADATA wsaData;
-   int startupResult = WSAStartup(MAKEWORD(2, 2), &wsaData);
-   WinsockHandle winsockHandle(startupResult == 0);
-   if (!winsockHandle) {
-      printf("WSAStartup failed with error: %d\n", startupResult);
+   // Initialize the socket system
+   int initializeResult = Sock::System::initialize();
+   SocketSystemHandle socketSystemHandle(initializeResult);
+   if (initializeResult != 0) {
+      printf("Socket system startup failed with error: %d\n", initializeResult);
       return false;
    }
 
@@ -267,14 +211,14 @@ bool Server::run() {
 
       while (!shuttingDown) {
          // Wait until a client attempts to connect, or we are shutting down
-         SOCKET clientSocket = INVALID_SOCKET;
-         while (!shuttingDown && clientSocket == INVALID_SOCKET) {
-            clientSocket = accept(listenSocket.data, NULL, NULL);
+         Sock::Socket clientSocket = Sock::kInvalidSocket;
+         while (!shuttingDown && clientSocket == Sock::kInvalidSocket) {
+            clientSocket = Sock::accept(listenSocket.data, nullptr, nullptr);
 
-            if (clientSocket == INVALID_SOCKET) {
-               int error = WSAGetLastError();
-               if (error != WSAEWOULDBLOCK) {
-                  printf("accept failed with error: %d\n", WSAGetLastError());
+            if (clientSocket == Sock::kInvalidSocket) {
+               int error = Sock::System::getLastError();
+               if (error != Sock::kWouldBlock) {
+                  printf("accept failed with error: %d\n", error);
                   return false;
                }
 
@@ -293,7 +237,7 @@ bool Server::run() {
                threadData[newThreadId] = nullptr;
             }
 
-            std::thread thread([this](uint64_t id, SOCKET socket) { manageConnection(id, socket); }, newThreadId, clientSocket);
+            std::thread thread([this](uint64_t id, Sock::Socket socket) { manageConnection(id, socket); }, newThreadId, clientSocket);
             thread.detach();
          }
       }
@@ -398,7 +342,7 @@ void Server::initCallbacks(Kontroller& kontroller) {
 }
 
 void Server::manageConnection(uint64_t id, uint64_t uintSocket) {
-   SocketHandle socket(static_cast<SOCKET>(uintSocket));
+   SocketHandle socket(static_cast<Sock::Socket>(uintSocket));
 
    std::shared_ptr<ThreadData> data = std::make_shared<ThreadData>();
    Kontroller::State localKontrollerState;
@@ -416,9 +360,9 @@ void Server::manageConnection(uint64_t id, uint64_t uintSocket) {
       localKontrollerState = globalKontrollerState;
    }
 
-   BOOL tcpNoDelay = TRUE;
-   int optResult = setsockopt(socket.data, IPPROTO_TCP, TCP_NODELAY, reinterpret_cast<char*>(&tcpNoDelay), sizeof(tcpNoDelay));
-   if (optResult == SOCKET_ERROR) {
+   int tcpNoDelay = 1;
+   int optResult = Sock::setsockopt(socket.data, IPPROTO_TCP, TCP_NODELAY, &tcpNoDelay, sizeof(tcpNoDelay));
+   if (optResult == Sock::kSocketError) {
       printf("Unable to disable the Nagle algorithm, connection may be jittery!\n");
    }
 
