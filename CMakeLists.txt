@@ -50,9 +50,6 @@ set_target_properties(${CLIENT_TARGET} PROPERTIES
 )
 
 # Libraries
-set(KONTROLLER_DIR "${LIB_DIR}/Kontroller")
-add_subdirectory("${KONTROLLER_DIR}")
-target_include_directories(${SERVER_TARGET} PUBLIC "${KONTROLLER_DIR}/include")
-target_include_directories(${CLIENT_TARGET} PUBLIC "${KONTROLLER_DIR}/include")
-target_link_libraries(${SERVER_TARGET} "Kontroller")
-target_link_libraries(${CLIENT_TARGET} "Kontroller")
+add_subdirectory("${LIB_DIR}/Kontroller")
+target_link_libraries(${SERVER_TARGET} Kontroller)
+target_link_libraries(${CLIENT_TARGET} Kontroller)

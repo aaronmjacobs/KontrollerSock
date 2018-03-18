@@ -73,33 +73,33 @@ inline bool terminate() {
 
 namespace Endian {
 
-uint32_t htonl(uint32_t hostLong) {
+inline uint32_t htonl(uint32_t hostLong) {
    return ::htonl(hostLong);
 }
 
-uint16_t htons(uint16_t hostShort) {
+inline uint16_t htons(uint16_t hostShort) {
    return ::htons(hostShort);
 }
 
-uint32_t ntohl(uint32_t netLong) {
+inline uint32_t ntohl(uint32_t netLong) {
    return ::ntohl(netLong);
 }
 
-uint16_t ntohs(uint16_t netShort) {
+inline uint16_t ntohs(uint16_t netShort) {
    return ::ntohs(netShort);
 }
 
 } // namespace Endian
 
-Socket accept(Socket socket, sockaddr* addr, socklen_t* addrlen) {
+inline Socket accept(Socket socket, sockaddr* addr, socklen_t* addrlen) {
    return ::accept(socket, addr, addrlen);
 }
 
-int bind(Socket socket, const sockaddr* addr, socklen_t addrlen) {
+inline int bind(Socket socket, const sockaddr* addr, socklen_t addrlen) {
    return ::bind(socket, addr, addrlen);
 }
 
-int close(Socket socket) {
+inline int close(Socket socket) {
 #if SOCK_WINDOWS
    return ::closesocket(socket);
 #elif SOCK_POSIX
@@ -107,27 +107,27 @@ int close(Socket socket) {
 #endif
 }
 
-int connect(Socket socket, const sockaddr* addr, socklen_t addrlen) {
+inline int connect(Socket socket, const sockaddr* addr, socklen_t addrlen) {
    return ::connect(socket, addr, addrlen);
 }
 
-void freeaddrinfo(addrinfo* res) {
+inline void freeaddrinfo(addrinfo* res) {
    return ::freeaddrinfo(res);
 }
 
-int getaddrinfo(const char* node, const char* service, const addrinfo* hints, addrinfo** result) {
+inline int getaddrinfo(const char* node, const char* service, const addrinfo* hints, addrinfo** result) {
    return ::getaddrinfo(node, service, hints, result);
 }
 
-int getpeername(Socket socket, sockaddr* address, socklen_t* addressLen) {
+inline int getpeername(Socket socket, sockaddr* address, socklen_t* addressLen) {
    return ::getpeername(socket, address, addressLen);
 }
 
-int getsockname(Socket socket, sockaddr* address, socklen_t* addressLen) {
+inline int getsockname(Socket socket, sockaddr* address, socklen_t* addressLen) {
    return ::getsockname(socket, address, addressLen);
 }
 
-int getsockopt(Socket socket, int level, int optionName, void* optionValue, socklen_t* optionLen) {
+inline int getsockopt(Socket socket, int level, int optionName, void* optionValue, socklen_t* optionLen) {
 #if SOCK_WINDOWS
    return ::getsockopt(socket, level, optionName, static_cast<char*>(optionValue), optionLen);
 #elif SOCK_POSIX
@@ -135,7 +135,7 @@ int getsockopt(Socket socket, int level, int optionName, void* optionValue, sock
 #endif
 }
 
-int ioctl(Socket socket, unsigned long command, unsigned long* arg) {
+inline int ioctl(Socket socket, unsigned long command, unsigned long* arg) {
 #if SOCK_WINDOWS
    return ::ioctlsocket(socket, static_cast<long>(command), arg);
 #elif SOCK_POSIX
@@ -143,11 +143,11 @@ int ioctl(Socket socket, unsigned long command, unsigned long* arg) {
 #endif
 }
 
-int listen(Socket socket, int backlog) {
+inline int listen(Socket socket, int backlog) {
    return ::listen(socket, backlog);
 }
 
-ssize_t recv(Socket socket, void* buf, size_t len, int flags) {
+inline ssize_t recv(Socket socket, void* buf, size_t len, int flags) {
 #if SOCK_WINDOWS
    return ::recv(socket, static_cast<char*>(buf), static_cast<int>(len), flags);
 #elif SOCK_POSIX
@@ -155,7 +155,7 @@ ssize_t recv(Socket socket, void* buf, size_t len, int flags) {
 #endif
 }
 
-ssize_t recvfrom(Socket socket, void* buf, size_t len, int flags, sockaddr* srcAddr, socklen_t* addrlen) {
+inline ssize_t recvfrom(Socket socket, void* buf, size_t len, int flags, sockaddr* srcAddr, socklen_t* addrlen) {
 #if SOCK_WINDOWS
    return ::recvfrom(socket, static_cast<char*>(buf), static_cast<int>(len), flags, srcAddr, addrlen);
 #elif SOCK_POSIX
@@ -163,11 +163,11 @@ ssize_t recvfrom(Socket socket, void* buf, size_t len, int flags, sockaddr* srcA
 #endif
 }
 
-int select(int nfds, fd_set* readfds, fd_set* writefds, fd_set* exceptfds, const timeval* timeout) {
+inline int select(int nfds, fd_set* readfds, fd_set* writefds, fd_set* exceptfds, const timeval* timeout) {
    return ::select(nfds, readfds, writefds, exceptfds, timeout);
 }
 
-ssize_t send(Socket socket, const void* buf, size_t len, int flags) {
+inline ssize_t send(Socket socket, const void* buf, size_t len, int flags) {
 #if SOCK_WINDOWS
    return ::send(socket, static_cast<const char*>(buf), static_cast<int>(len), flags);
 #elif SOCK_POSIX
@@ -175,7 +175,7 @@ ssize_t send(Socket socket, const void* buf, size_t len, int flags) {
 #endif
 }
 
-ssize_t sendto(Socket socket, const void* buf, size_t len, int flags, const sockaddr* destAddr, socklen_t addrlen) {
+inline ssize_t sendto(Socket socket, const void* buf, size_t len, int flags, const sockaddr* destAddr, socklen_t addrlen) {
 #if SOCK_WINDOWS
    return ::sendto(socket, static_cast<const char*>(buf), static_cast<int>(len), flags, destAddr, addrlen);
 #elif SOCK_POSIX
@@ -183,7 +183,7 @@ ssize_t sendto(Socket socket, const void* buf, size_t len, int flags, const sock
 #endif
 }
 
-int setsockopt(Socket socket, int level, int optionName, const void* optionValue, socklen_t optionLen) {
+inline int setsockopt(Socket socket, int level, int optionName, const void* optionValue, socklen_t optionLen) {
 #if SOCK_WINDOWS
    return ::setsockopt(socket, level, optionName, static_cast<const char*>(optionValue), optionLen);
 #elif SOCK_POSIX
@@ -191,11 +191,11 @@ int setsockopt(Socket socket, int level, int optionName, const void* optionValue
 #endif
 }
 
-int shutdown(Socket socket, int how) {
+inline int shutdown(Socket socket, int how) {
    return ::shutdown(socket, how);
 }
 
-Socket socket(int domain, int type, int protocol) {
+inline Socket socket(int domain, int type, int protocol) {
    return ::socket(domain, type, protocol);
 }
 
