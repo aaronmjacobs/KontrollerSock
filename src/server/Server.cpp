@@ -1,7 +1,7 @@
+#include "KontrollerSock/Handles.h"
 #include "KontrollerSock/Packet.h"
 #include "KontrollerSock/Server.h"
-#include "Handles.h"
-#include "Sock.h"
+#include "KontrollerSock/Sock.h"
 
 #include <chrono>
 #include <cstdint>

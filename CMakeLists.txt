@@ -14,18 +14,18 @@ set(LIB_DIR "${CMAKE_CURRENT_SOURCE_DIR}/lib")
 # Source files
 set(SERVER_SOURCES)
 list(APPEND SERVER_SOURCES
+   "${INC_DIR}/KontrollerSock/Client.h"
+   "${INC_DIR}/KontrollerSock/Handles.h"
    "${INC_DIR}/KontrollerSock/Packet.h"
-   "${INC_DIR}/KontrollerSock/Server.h"
-   "${SRC_DIR}/Handles.h"
-   "${SRC_DIR}/Sock.h"
+   "${INC_DIR}/KontrollerSock/Sock.h"
    "${SERVER_SRC_DIR}/Server.cpp"
 )
 set(CLIENT_SOURCES)
 list(APPEND CLIENT_SOURCES
-   "${INC_DIR}/KontrollerSock/Packet.h"
    "${INC_DIR}/KontrollerSock/Client.h"
-   "${SRC_DIR}/Handles.h"
-   "${SRC_DIR}/Sock.h"
+   "${INC_DIR}/KontrollerSock/Handles.h"
+   "${INC_DIR}/KontrollerSock/Packet.h"
+   "${INC_DIR}/KontrollerSock/Sock.h"
    "${CLIENT_SRC_DIR}/Client.cpp"
 )
 
