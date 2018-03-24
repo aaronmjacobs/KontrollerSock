@@ -40,6 +40,7 @@ constexpr int kSocketError = -1;
 using Socket = SOCKET;
 constexpr Socket kInvalidSocket = INVALID_SOCKET;
 enum Errors {
+   kNoError = 0,
    kWouldBlock = WSAEWOULDBLOCK,
    kInProgress = WSAEINPROGRESS
 };
@@ -47,6 +48,7 @@ enum Errors {
 using Socket = int;
 constexpr Socket kInvalidSocket = -1;
 enum Errors {
+   kNoError = 0,
    kWouldBlock = EWOULDBLOCK,
    kInProgress = EINPROGRESS
 };
