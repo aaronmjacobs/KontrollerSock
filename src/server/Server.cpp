@@ -158,6 +158,13 @@ SocketHandle createListenSocket() {
          return {};
       }
 
+      unsigned long nonBlocking = 1;
+      int ioctlResult = Sock::ioctl(listenSocket.data, FIONBIO, &nonBlocking);
+      if (ioctlResult == Sock::kSocketError) {
+         printf("ioctl failed with error: %d\n", Sock::System::getLastError());
+         return {};
+      }
+
       int bindResult = Sock::bind(listenSocket.data, addrInfo.data->ai_addr, static_cast<socklen_t>(addrInfo.data->ai_addrlen));
       if (bindResult == Sock::kSocketError) {
          printf("bind failed with error: %d\n", Sock::System::getLastError());
@@ -168,13 +175,6 @@ SocketHandle createListenSocket() {
    int listenResult = Sock::listen(listenSocket.data, SOMAXCONN);
    if (listenResult == Sock::kSocketError) {
       printf("listen failed with error: %d\n", Sock::System::getLastError());
-      return {};
-   }
-
-   unsigned long nonBlocking = 1;
-   int ioctlResult = Sock::ioctl(listenSocket.data, FIONBIO, &nonBlocking);
-   if (ioctlResult == Sock::kSocketError) {
-      printf("ioctlsocket failed with error: %d\n", Sock::System::getLastError());
       return {};
    }
 

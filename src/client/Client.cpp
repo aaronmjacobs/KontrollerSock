@@ -195,18 +195,18 @@ KontrollerSock::SocketHandle Client::connect(const char* endpoint) {
          return {};
       }
 
+      unsigned long nonBlocking = 1;
+      int ioctrlResult = Sock::ioctl(clientSocket.data, FIONBIO, &nonBlocking);
+      if (ioctrlResult == Sock::kSocketError) {
+         printf("ioctl failed with error: %d\n", Sock::System::getLastError());
+         return {};
+      }
+
       int connectResult = Sock::connect(clientSocket.data, addrInfo.data->ai_addr, static_cast<socklen_t>(addrInfo.data->ai_addrlen));
       if (connectResult == Sock::kSocketError) {
          printf("connect failed with error: %d\n", Sock::System::getLastError());
          return {};
       }
-   }
-
-   unsigned long nonBlocking = 1;
-   int ioctrlResult = Sock::ioctl(clientSocket.data, FIONBIO, &nonBlocking);
-   if (ioctrlResult == Sock::kSocketError) {
-      printf("ioctlsocket failed with error: %d\n", Sock::System::getLastError());
-      return {};
    }
 
    return clientSocket;
