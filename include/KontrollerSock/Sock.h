@@ -24,8 +24,12 @@ using ssize_t = SSIZE_T;
 #elif SOCK_POSIX
 #  include <arpa/inet.h>
 #  include <netdb.h>
+#  include <netinet/tcp.h>
+#  include <sys/errno.h>
+#  include <sys/ioctl.h>
 #  include <sys/socket.h>
 #  include <sys/types.h>
+#  include <unistd.h>
 #endif
 
 namespace Sock {
@@ -73,20 +77,20 @@ inline bool terminate() {
 
 namespace Endian {
 
-inline uint32_t htonl(uint32_t hostLong) {
-   return ::htonl(hostLong);
+inline uint32_t hostToNetworkLong(uint32_t hostLong) {
+   return htonl(hostLong);
 }
 
-inline uint16_t htons(uint16_t hostShort) {
-   return ::htons(hostShort);
+inline uint16_t hostToNetworkShort(uint16_t hostShort) {
+   return htons(hostShort);
 }
 
-inline uint32_t ntohl(uint32_t netLong) {
-   return ::ntohl(netLong);
+inline uint32_t networkToHostLong(uint32_t netLong) {
+   return ntohl(netLong);
 }
 
-inline uint16_t ntohs(uint16_t netShort) {
-   return ::ntohs(netShort);
+inline uint16_t networkToHostShort(uint16_t netShort) {
+   return ntohs(netShort);
 }
 
 } // namespace Endian
@@ -163,8 +167,12 @@ inline ssize_t recvfrom(Socket socket, void* buf, size_t len, int flags, sockadd
 #endif
 }
 
-inline int select(int nfds, fd_set* readfds, fd_set* writefds, fd_set* exceptfds, const timeval* timeout) {
+inline int select(Socket nfds, fd_set* readfds, fd_set* writefds, fd_set* exceptfds, timeval* timeout) {
+#if SOCK_WINDOWS
+   return ::select(0, readfds, writefds, exceptfds, timeout);
+#elif SOCK_POSIX
    return ::select(nfds, readfds, writefds, exceptfds, timeout);
+#endif
 }
 
 inline ssize_t send(Socket socket, const void* buf, size_t len, int flags) {

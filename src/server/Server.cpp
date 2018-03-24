@@ -29,9 +29,9 @@ bool sendData(Sock::Socket socket, const uint8_t* data, size_t size) {
 
 bool sendPacket(Sock::Socket socket, EventPacket packet) {
    EventPacket networkPacket;
-   networkPacket.type = Sock::Endian::htons(packet.type);
-   networkPacket.id = Sock::Endian::htons(packet.id);
-   networkPacket.value = Sock::Endian::htonl(packet.value);
+   networkPacket.type = Sock::Endian::hostToNetworkShort(packet.type);
+   networkPacket.id = Sock::Endian::hostToNetworkShort(packet.id);
+   networkPacket.value = Sock::Endian::hostToNetworkLong(packet.value);
 
    return sendData(socket, reinterpret_cast<const uint8_t*>(&networkPacket), sizeof(networkPacket));
 }

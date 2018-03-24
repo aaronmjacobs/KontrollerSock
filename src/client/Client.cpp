@@ -99,13 +99,12 @@ bool receiveData(Sock::Socket socket, uint8_t* data, size_t size) {
 }
 
 ReceiveResult receivePacket(Sock::Socket socket, EventPacket& packet) {
-   static const timeval kTimeout = { 0, 100000 }; // 100ms timeout
-
    // Wait (with timeout) until there is data available
    fd_set fds;
    FD_ZERO(&fds);
    FD_SET(socket, &fds);
-   int selectResult = Sock::select(0, &fds, nullptr, nullptr, &kTimeout);
+   timeval timeout = { 0, 100'000 }; // 100ms
+   int selectResult = Sock::select(socket + 1, &fds, nullptr, nullptr, &timeout);
    if (selectResult < 0) {
       return ReceiveResult::kError;
    } else if (selectResult == 0) {
@@ -132,9 +131,9 @@ ReceiveResult receivePacket(Sock::Socket socket, EventPacket& packet) {
    }
 
    // Translate from network byte order to host byte order
-   packet.type = Sock::Endian::ntohs(networkPacket.type);
-   packet.id = Sock::Endian::ntohs(networkPacket.id);
-   packet.value = Sock::Endian::ntohl(networkPacket.value);
+   packet.type = Sock::Endian::networkToHostShort(networkPacket.type);
+   packet.id = Sock::Endian::networkToHostShort(networkPacket.id);
+   packet.value = Sock::Endian::networkToHostLong(networkPacket.value);
    return ReceiveResult::kSuccess;
 }
 
