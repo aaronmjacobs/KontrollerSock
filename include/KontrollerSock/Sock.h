@@ -39,11 +39,17 @@ constexpr int kSocketError = -1;
 #if SOCK_WINDOWS
 using Socket = SOCKET;
 constexpr Socket kInvalidSocket = INVALID_SOCKET;
-constexpr int kWouldBlock = WSAEWOULDBLOCK;
+enum Errors {
+   kWouldBlock = WSAEWOULDBLOCK,
+   kInProgress = WSAEINPROGRESS
+};
 #elif SOCK_POSIX
 using Socket = int;
 constexpr Socket kInvalidSocket = -1;
-constexpr int kWouldBlock = EWOULDBLOCK;
+enum Errors {
+   kWouldBlock = EWOULDBLOCK,
+   kInProgress = EINPROGRESS
+};
 #endif
 
 namespace System {

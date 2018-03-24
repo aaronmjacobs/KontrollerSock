@@ -204,8 +204,11 @@ KontrollerSock::SocketHandle Client::connect(const char* endpoint) {
 
       int connectResult = Sock::connect(clientSocket.data, addrInfo.data->ai_addr, static_cast<socklen_t>(addrInfo.data->ai_addrlen));
       if (connectResult == Sock::kSocketError) {
-         printf("connect failed with error: %d\n", Sock::System::getLastError());
-         return {};
+         int error = Sock::System::getLastError();
+         if (error != Sock::kInProgress) {
+            printf("connect failed with error: %d\n", Sock::System::getLastError());
+            return{};
+         }
       }
    }
 
